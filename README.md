@@ -29,11 +29,14 @@ Mostly written by Claude Code.
    An error writes nothing. A projection that throws rolls the events
    back with it. `{:events []}` is a command that changed nothing.
 
-4. **The read model is derived.** `project!` folds one event into the
-   tables. They can be dropped and derived again from the events at any
-   time (`rebuild`): a changed projection means a rebuild, never a
-   migration of the tables in place. `project!` reads every event ever
-   written, so an old shape is handled there. A rebuild reads the log a
+4. **The read model is derived.** `project` turns one event into the
+   statements that fold it into the tables, SQL text and parameters as
+   data, and the store runs them in the command's transaction. It is a
+   function of the event alone, tested without a database. The tables
+   can be dropped and derived again from the events at any time
+   (`rebuild`): a changed projection means a rebuild, never a migration
+   of the tables in place. `project` sees every event ever written, so
+   an old shape is handled there. A rebuild reads the log a
    page at a time, as any consumer does; it is one transaction and the
    Object has limited CPU per request, so a very long stream rebuilds in
    slices.
@@ -53,7 +56,7 @@ Mostly written by Claude Code.
 | file | what |
 | --- | --- |
 | `src/event_sourcing/store.cljs` | the recipe: the events table, `execute!`, `events-after`, `rebuild!`, the codec |
-| `src/event_sourcing/todo.cljs` | the example domain: `tables`, `decide`, `project!`, `queries` |
+| `src/event_sourcing/todo.cljs` | the example domain: `tables`, `decide`, `project`, `queries` |
 | `src/event_sourcing/stream.cljs` | the Durable Object: the store behind `execute`, `events`, `query`, `rebuild` |
 | `test/event_sourcing/` | the store exercised on a `node:sqlite` stand-in of the Object's storage |
 | `docs/codec-benchmark.md` | transit against EDN, measured |

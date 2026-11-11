@@ -30,14 +30,15 @@
 
     {:error (str "Unknown command " (pr-str (:command/type command)))}))
 
-(defn project!
-  "One event folded into the read model. It reads every event ever
-   written, so an old shape is handled here; an unknown type throws,
-   and a retired type gets a clause that ignores it."
-  [db event]
+(defn project
+  "The statements that fold one event into the read model, each SQL text
+   and its parameters: a function of the event alone. It sees every
+   event ever written, so an old shape is handled here; an unknown type
+   throws, and a retired type gets a clause that answers nil."
+  [event]
   (case (:event/type event)
-    :todo/added (exec db "insert into todos (id, text) values (?, ?)" (:todo/id event) (:todo/text event))
-    :todo/completed (exec db "update todos set done = 1 where id = ?" (:todo/id event))))
+    :todo/added [["insert into todos (id, text) values (?, ?)" (:todo/id event) (:todo/text event)]]
+    :todo/completed [["update todos set done = 1 where id = ?" (:todo/id event)]]))
 
 (def queries
   "The read model's queries, by the path they answer on."
@@ -46,5 +47,5 @@
 (def domain
   {:tables tables
    :decide decide
-   :project! project!
+   :project project
    :queries queries})

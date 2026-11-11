@@ -54,3 +54,10 @@
     (store/rebuild! storage todo/domain)
     (is (= n (count (todos storage))))
     (is (= n (:event/number (peek (store/events-after storage (* 2 store/page) store/page)))))))
+
+
+(deftest a-projection-is-data
+  (is (= [["insert into todos (id, text) values (?, ?)" "t1" "Ship it"]]
+         (todo/project {:event/type :todo/added :todo/id "t1" :todo/text "Ship it"})))
+  (is (= [["update todos set done = 1 where id = ?" "t1"]]
+         (todo/project {:event/type :todo/completed :todo/id "t1"}))))

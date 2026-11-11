@@ -6,10 +6,11 @@ Decided 2026-11-11.
 
 ## The decision
 
-A statement is a string and its parameters, run by `exec`:
+A statement is a vector of SQL text and its parameters. A projection
+answers them as data, and the store runs them with `exec`:
 
 ```clojure
-(exec db "update todos set done = 1 where id = ?" (:todo/id event))
+[["update todos set done = 1 where id = ?" (:todo/id event)]]
 ```
 
 Values travel as bindings, never spliced into the string. The only string
@@ -35,10 +36,12 @@ declares.
 
 ## Opting in
 
-`exec` takes the statement and its parameters positionally, so a domain
-with genuinely dynamic queries can format them with HoneySQL and hand them
-over, without the store knowing:
+`sql/format` answers exactly such a vector, so a domain with genuinely
+dynamic statements can format them with HoneySQL and hand them over,
+without the store knowing:
 
 ```clojure
-(apply exec db (sql/format {:select [:id :text] :from :todos :where [:= :done 0]}))
+(defn project [event]
+  (case (:event/type event)
+    :todo/completed [(sql/format {:update :todos :set {:done 1} :where [:= :id (:todo/id event)]})]))
 ```
