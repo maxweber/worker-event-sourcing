@@ -1,7 +1,8 @@
 # SQL strings, not a query DSL
 
 Why the store and the domain write SQL as strings with `?` bindings
-rather than as HoneySQL maps. Decided 2026-11-11.
+rather than as [HoneySQL](https://github.com/seancorfield/honeysql) maps.
+Decided 2026-11-11.
 
 ## The decision
 
