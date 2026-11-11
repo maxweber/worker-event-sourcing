@@ -36,10 +36,13 @@ Mostly written by Claude Code.
    can be dropped and derived again from the events at any time
    (`rebuild`): a changed projection means a rebuild, never a migration
    of the tables in place. `project` sees every event ever written, so
-   an old shape is handled there. A rebuild reads the log a
-   page at a time, as any consumer does; it is one transaction and the
-   Object has limited CPU per request, so a very long stream rebuilds in
-   slices.
+   an old shape is handled there. A changed projection is a new
+   `version` in the domain, committed with the change; the Object
+   records the version it was built with, so a stream built under
+   another one derives its read model again at its first use after the
+   deploy, before it answers. A rebuild reads the log a page at a time,
+   as any consumer does; it is one transaction and the Object has
+   limited CPU per request, so a very long stream rebuilds in slices.
 
 5. **Others read the log.** `events` hands out events in order after a
    number. A consumer keeps the last number it saw as its cursor and asks
@@ -56,7 +59,7 @@ Mostly written by Claude Code.
 | file | what |
 | --- | --- |
 | `src/event_sourcing/store.cljs` | the recipe: the events table, `execute!`, `events-after`, `rebuild!`, the codec |
-| `src/event_sourcing/todo.cljs` | the example domain: `tables`, `decide`, `project`, `queries` |
+| `src/event_sourcing/todo.cljs` | the example domain: `version`, `tables`, `decide`, `project`, `queries` |
 | `src/event_sourcing/stream.cljs` | the Durable Object: the store behind `execute`, `events`, `query`, `rebuild` |
 | `test/event_sourcing/` | the store exercised on a `node:sqlite` stand-in of the Object's storage |
 | `docs/codec-benchmark.md` | transit against EDN, measured |

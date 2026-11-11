@@ -1,5 +1,6 @@
 (ns event-sourcing.store-test
-  (:require [clojure.test :refer [deftest is testing]]
+  (:require [clojure.string :as str]
+            [clojure.test :refer [deftest is testing]]
             [event-sourcing.fake :as fake]
             [event-sourcing.store :as store]
             [event-sourcing.todo :as todo]))
@@ -70,4 +71,32 @@
         careless (assoc-in todo/domain [:tables "Events"] "create table if not exists Events (x)")]
     (is (thrown? js/Error (store/schema! storage careless)))
     (is (thrown? js/Error (store/rebuild! storage careless)))
+    (is (thrown? js/Error (store/schema! storage (assoc-in todo/domain [:tables "projection"] "create table if not exists projection (x)"))))
     (is (= 1 (count (store/events-after storage 0 100))))))
+
+(deftest a-new-version-derives-the-read-model-again
+  (let [storage (fake/storage)
+        _ (store/schema! storage todo/domain)
+        {[added] :events} (store/execute! storage todo/domain {:command/type :todo/add :todo/text "Ship it"})
+        id (:todo/id added)
+        tamper! #(store/exec (.-sql storage) "update todos set text = 'tampered'")
+        v2 (-> todo/domain
+               (assoc :version "a-new-uuid")
+               (assoc-in [:tables "todos"] "create table if not exists todos (id text primary key, text text not null, done integer not null default 0, upper text)")
+               (assoc :project (fn [event]
+                                 (case (:event/type event)
+                                   :todo/added [["insert into todos (id, text, upper) values (?, ?, ?)" (:todo/id event) (:todo/text event) (str/upper-case (:todo/text event))]]
+                                   :todo/completed [["update todos set done = 1 where id = ?" (:todo/id event)]]))))]
+    (testing "the same version leaves the read model alone"
+      (tamper!)
+      (store/schema! storage todo/domain)
+      (is (= [{:id id :text "tampered" :done 0}] (todos storage))))
+    (testing "a new version derives the read model again, in its new shape"
+      (store/schema! storage v2)
+      (is (= [{:id id :text "Ship it" :done 0 :upper "SHIP IT"}]
+             (store/exec (.-sql storage) "select id, text, done, upper from todos"))))
+    (testing "the version is recorded, so the next construction does nothing"
+      (tamper!)
+      (store/schema! storage v2)
+      (is (= [{:id id :text "tampered" :done 0 :upper "SHIP IT"}]
+             (store/exec (.-sql storage) "select id, text, done, upper from todos"))))))
