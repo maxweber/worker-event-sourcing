@@ -3,14 +3,14 @@
    request at a time, so it is the single writer of its stream. The
    `events` table is the truth: one event per row as transit JSON,
    numbered without a gap, never updated, never deleted. The read model
-   is derived from it by the domain's `project`, in the transaction that
+   is derived from it by the domain's `project!`, in the transaction that
    appends the events, and can be dropped and derived again at any time.
 
    A domain is a map:
      :tables   table name to its `create table if not exists` statement
      :decide   (fn [db command]) reading the read model and answering
                `{:events [...]}` or `{:error ...}`; it writes nothing
-     :project  (fn [db event]) folding one event into the read model
+     :project!  (fn [db event]) folding one event into the read model
    `db` is the Object's SQLite, `ctx.storage.sql`: embedded, mutable,
    synchronous, one per Object. The store adds `:event/number` and
    `:event/at` to every event; the domain owns the rest, `:event/type`
@@ -54,14 +54,14 @@
 (defn- append!
   "`events` appended after the last one and projected, inside the
    caller's transaction; the events with their numbers."
-  [db {:keys [project]} events]
+  [db {:keys [project!]} events]
   (let [last (:n (first (exec db "select coalesce(max(number), 0) as n from events")))
         at (.toISOString (js/Date.))]
     (reduce (fn [appended event]
               (let [event (assoc event :event/number (+ last (count appended) 1) :event/at at)]
                 (exec db "insert into events (number, event) values (?, ?)"
                       (:event/number event) (encode event))
-                (project db event)
+                (project! db event)
                 (conj appended event)))
             []
             events)))
@@ -94,7 +94,7 @@
   "The read model dropped and derived again from every event, in one
    transaction: after a projection changed, or when in doubt. It reads
    its own log as any consumer does, a page after a cursor at a time."
-  [^js storage {:keys [tables project] :as domain}]
+  [^js storage {:keys [tables project!] :as domain}]
   (.transactionSync storage
     (fn []
       (let [db (.-sql storage)]
@@ -104,6 +104,6 @@
         (loop [after 0]
           (let [events (events-after storage after page)]
             (doseq [event events]
-              (project db event))
+              (project! db event))
             (when (= page (count events))
               (recur (:event/number (peek events))))))))))

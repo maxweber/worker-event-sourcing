@@ -30,7 +30,7 @@
 
     {:error (str "Unknown command " (pr-str (:command/type command)))}))
 
-(defn project
+(defn project!
   "One event folded into the read model. It reads every event ever
    written, so an old shape is handled here; an unknown type throws,
    and a retired type gets a clause that ignores it."
@@ -46,5 +46,5 @@
 (def domain
   {:tables tables
    :decide decide
-   :project project
+   :project! project!
    :queries queries})
