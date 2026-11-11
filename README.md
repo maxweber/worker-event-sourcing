@@ -34,8 +34,8 @@ Mostly written by Claude Code.
    transaction and the Object has limited CPU per request, so a long
    stream rebuilds in slices.
 
-5. **Others read the log.** `GET /events?after=N` hands out events in
-   order. A consumer keeps the last number it saw as its cursor and asks
+5. **Others read the log.** `events` hands out events in order after a
+   number. A consumer keeps the last number it saw as its cursor and asks
    again from there: another Object with its own read model, a server, a
    copy of the log kept elsewhere. One protocol for all of them.
 
@@ -50,31 +50,31 @@ Mostly written by Claude Code.
 | --- | --- |
 | `src/event_sourcing/store.cljs` | the recipe: the events table, `execute!`, `events-after`, `rebuild!` |
 | `src/event_sourcing/todo.cljs` | the example domain: `tables`, `decide`, `project`, `queries` |
-| `src/event_sourcing/worker.cljs` | the Worker routing `/<stream>/...` to the Object, and the Object's API |
+| `src/event_sourcing/stream.cljs` | the Durable Object: the store behind `execute`, `events`, `query`, `rebuild` |
 | `test/event_sourcing/` | the store exercised on a `node:sqlite` stand-in of the Object's storage |
 
-## API
+## From a Worker
 
-| | |
-| --- | --- |
-| `POST /<stream>/command` | an EDN command; its events, or `{:error ...}` with 400 |
-| `GET /<stream>/events?after=N` | up to 100 events after number N |
-| `GET /<stream>/todos` | the read model |
-| `POST /<stream>/rebuild` | the read model derived again from the events |
+The Object's methods take and answer EDN text. With the `STREAM` binding
+of `wrangler.jsonc`:
+
+```clojure
+(let [^js streams (.-STREAM env)
+      ^js stream (.get streams (.idFromName streams "acme"))]
+  (reader/read-string (await (.execute stream (pr-str {:command/type :todo/add :todo/text "Ship it"}))))
+  ;; => {:events [{:event/type :todo/added, :todo/id "…", :todo/text "Ship it", :event/number 1, :event/at "…"}]}
+  (reader/read-string (await (.query stream "todos")))
+  ;; => [{:id "…", :text "Ship it", :done 0}]
+  (reader/read-string (await (.events stream 0))))
+  ;; => the events after number 0, up to 100
+```
 
 ## Run
 
 ```sh
 npm ci
 npm test          # the store under Node, no network
-npm run dev       # local workerd on :8787
 npm run deploy    # wrangler deploy
-```
-
-```sh
-curl -X POST localhost:8787/acme/command -d '{:command/type :todo/add :todo/text "Ship it"}'
-curl localhost:8787/acme/todos
-curl 'localhost:8787/acme/events?after=0'
 ```
 
 ## License
