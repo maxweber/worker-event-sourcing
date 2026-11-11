@@ -33,9 +33,10 @@ Mostly written by Claude Code.
    tables. They can be dropped and derived again from the events at any
    time (`rebuild`): a changed projection means a rebuild, never a
    migration of the tables in place. `project` reads every event ever
-   written, so an old shape is handled there. A rebuild is one
-   transaction and the Object has limited CPU per request, so a long
-   stream rebuilds in slices.
+   written, so an old shape is handled there. A rebuild reads the log a
+   page at a time, as any consumer does; it is one transaction and the
+   Object has limited CPU per request, so a very long stream rebuilds in
+   slices.
 
 5. **Others read the log.** `events` hands out events in order after a
    number. A consumer keeps the last number it saw as its cursor and asks

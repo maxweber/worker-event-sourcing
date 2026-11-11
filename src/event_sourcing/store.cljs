@@ -12,8 +12,9 @@
                `{:events [...]}` or `{:error ...}`; it writes nothing
      :project  (fn [db event]) folding one event into the read model
    `db` is the Object's SQLite, `ctx.storage.sql`: embedded, mutable,
-   synchronous, one per Object. The store adds `:event/number` and `:event/at` to every event; the
-   domain owns the rest, `:event/type` included."
+   synchronous, one per Object. The store adds `:event/number` and
+   `:event/at` to every event; the domain owns the rest, `:event/type`
+   included."
   (:require [cognitect.transit :as transit]))
 
 (def ^:private writer (transit/writer :json))
@@ -29,6 +30,10 @@
 (defn decode
   [text]
   (transit/read reader text))
+
+(def page
+  "How many events one read of the log hands out."
+  100)
 
 (defn exec
   "One SQL statement with its parameters; the rows as maps."
@@ -52,14 +57,14 @@
   [db {:keys [project]} events]
   (let [last (:n (first (exec db "select coalesce(max(number), 0) as n from events")))
         at (.toISOString (js/Date.))]
-    (vec (map-indexed
-           (fn [i event]
-             (let [event (assoc event :event/number (+ last i 1) :event/at at)]
-               (exec db "insert into events (number, event) values (?, ?)"
-                     (:event/number event) (encode event))
-               (project db event)
-               event))
-           events))))
+    (reduce (fn [appended event]
+              (let [event (assoc event :event/number (+ last (count appended) 1) :event/at at)]
+                (exec db "insert into events (number, event) values (?, ?)"
+                      (:event/number event) (encode event))
+                (project db event)
+                (conj appended event)))
+            []
+            events)))
 
 (defn execute!
   "One command in one transaction: `decide` reads the read model and
@@ -77,8 +82,8 @@
 
 (defn events-after
   "Up to `limit` events after number `after`, in order; `after` 0 is the
-   start, `limit` -1 every one. A consumer keeps the last number it saw
-   as its cursor and asks again from there."
+   start. A consumer keeps the last number it saw as its cursor and asks
+   again from there."
   [^js storage after limit]
   (mapv #(decode (:event %))
         (exec (.-sql storage)
@@ -87,7 +92,8 @@
 
 (defn rebuild!
   "The read model dropped and derived again from every event, in one
-   transaction: after a projection changed, or when in doubt."
+   transaction: after a projection changed, or when in doubt. It reads
+   its own log as any consumer does, a page after a cursor at a time."
   [^js storage {:keys [tables project] :as domain}]
   (.transactionSync storage
     (fn []
@@ -95,5 +101,9 @@
         (doseq [[table _] tables]
           (exec db (str "drop table if exists " table)))
         (schema! storage domain)
-        (doseq [event (events-after storage 0 -1)]
-          (project db event))))))
+        (loop [after 0]
+          (let [events (events-after storage after page)]
+            (doseq [event events]
+              (project db event))
+            (when (= page (count events))
+              (recur (:event/number (peek events))))))))))

@@ -12,10 +12,6 @@
 (def domain
   todo/domain)
 
-(def page
-  "How many events one read of the log hands out."
-  100)
-
 (defclass Stream
   (extends DurableObject)
   (constructor [this ctx env]
@@ -27,7 +23,7 @@
     (store/encode (store/execute! (.. this -ctx -storage) domain (store/decode command))))
   ;; up to a page of events after number `after`, transit
   (events [this after]
-    (store/encode (store/events-after (.. this -ctx -storage) after page)))
+    (store/encode (store/events-after (.. this -ctx -storage) after store/page)))
   ;; the read model's query `name` (`todo/queries`), transit
   (query [this name]
     (store/encode ((get (:queries domain) name) (.. this -ctx -storage -sql))))

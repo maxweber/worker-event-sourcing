@@ -44,3 +44,13 @@
                                    (assoc todo/domain :decide (fn [_ _] {:events [{:event/type :todo/unknown}]}))
                                    {})))
       (is (= 2 (count (store/events-after storage 0 100)))))))
+
+(deftest a-rebuild-pages-through-its-log
+  (let [storage (fake/storage)
+        n (+ (* 2 store/page) 50)]
+    (store/schema! storage todo/domain)
+    (dotimes [i n]
+      (store/execute! storage todo/domain {:command/type :todo/add :todo/text (str "todo " i)}))
+    (store/rebuild! storage todo/domain)
+    (is (= n (count (todos storage))))
+    (is (= n (:event/number (peek (store/events-after storage (* 2 store/page) store/page)))))))
