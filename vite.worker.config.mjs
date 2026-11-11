@@ -1,8 +1,8 @@
 import cljf from 'clojurific/vite';
 
-// The Durable Object class, one bundle: `vite build --config
+// The two Durable Object classes, one bundle: `vite build --config
 // vite.worker.config.mjs` writes dist/worker/worker-event-sourcing.js
-// exporting Stream, which wrangler.jsonc names as the class.
+// exporting Log and Projection, which wrangler.jsonc names as the classes.
 export default {
   plugins: [
     cljf({
@@ -11,7 +11,8 @@ export default {
         'js-entries': {
           'worker-event-sourcing': {
             exports: {
-              Stream: "'event-sourcing.stream/Stream",
+              Log: "'event-sourcing.objects/Log",
+              Projection: "'event-sourcing.objects/Projection",
             },
           },
         },

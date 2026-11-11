@@ -8,9 +8,9 @@ model instead of running them. Decided 2026-11-11.
 `project` is a function of the event alone. It answers a sequence of
 statements, each a vector of SQL text and its parameters, in order; `nil`
 or an empty sequence for an event that touches no table; an unknown type
-throws, and a retired type gets a clause that answers `nil`. The store
-runs the statements with `exec`, inside the transaction that appends the
-event, and again on a rebuild.
+throws, and a retired type gets a clause that answers `nil`. The
+projection runs the statements with `exec` when it folds the event into
+its read model, in the transaction that advances its cursor.
 
 ```clojure
 (defn project [event]
@@ -24,10 +24,10 @@ event, and again on a rebuild.
 - **Purity.** A projection is tested by an equality check on the
   statements, with no database. It reads like the recipe's other data:
   an event in, statements out.
-- **One place runs SQL.** The store executes every projection, so it can
-  name the event number and the statement that failed, count what a
-  rebuild did, or print what a rebuild would do. A projection that runs
-  its own statements spreads that over every domain.
+- **One place runs SQL.** The projection executes every statement, so it
+  can name the event number and the statement that failed, count what a
+  catch-up did, or print what one would do. A projection that runs its
+  own statements spreads that over every domain.
 - **HoneySQL costs nothing to opt into.** `sql/format` answers exactly
   such a vector, so a domain that wants it returns what `format` gives
   ([sql-strings.md](sql-strings.md)).

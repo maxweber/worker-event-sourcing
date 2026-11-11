@@ -5,10 +5,11 @@
   "compatibility_date": "2026-10-01",
   "durable_objects": {
     "bindings": [
-      { "name": "STREAM", "class_name": "Stream" }
+      { "name": "LOG", "class_name": "Log" },
+      { "name": "PROJECTION", "class_name": "Projection" }
     ]
   },
   "migrations": [
-    { "tag": "v1", "new_sqlite_classes": ["Stream"] }
+    { "tag": "v1", "new_sqlite_classes": ["Log", "Projection"] }
   ]
 }

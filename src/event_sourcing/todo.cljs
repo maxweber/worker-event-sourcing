@@ -1,9 +1,14 @@
 (ns event-sourcing.todo
   "The example domain, todos: commands decided against the read model,
-   events folded into it. Replace it with yours; the store does not
-   know it."
+   events folded into it as statements. Replace it with yours; the log
+   and the projection do not know it."
   (:require [clojure.string :as str]
             [event-sourcing.store :refer [exec]]))
+
+(def version
+  "Part of the projection Object's name. A new UUID, committed with the
+   change, whenever `tables` or `project` change."
+  "2d9c7fe0-cd07-4a9b-9b3a-65fde5a89396")
 
 (def tables
   {"todos" "create table if not exists todos (id text primary key, text text not null, done integer not null default 0)"})
@@ -41,11 +46,12 @@
     :todo/completed [["update todos set done = 1 where id = ?" (:todo/id event)]]))
 
 (def queries
-  "The read model's queries, by the path they answer on."
+  "The read model's queries, by name."
   {"todos" (fn [db] (exec db "select id, text, done from todos order by rowid"))})
 
 (def domain
-  {:tables tables
+  {:version version
+   :tables tables
    :decide decide
    :project project
    :queries queries})
