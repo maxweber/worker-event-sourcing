@@ -61,6 +61,7 @@ Mostly written by Claude Code.
 | `test/event_sourcing/` | the store exercised on a `node:sqlite` stand-in of the Object's storage |
 | `docs/codec-benchmark.md` | transit against EDN, measured |
 | `docs/sql-strings.md` | SQL strings with bindings, not a query DSL: why |
+| `docs/projections-as-data.md` | a projection answers its statements as data: why |
 
 ## From a Worker
 
