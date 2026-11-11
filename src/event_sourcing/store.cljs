@@ -8,10 +8,11 @@
 
    A domain is a map:
      :tables   table name to its `create table if not exists` statement
-     :decide   (fn [sql command]) reading the read model and answering
+     :decide   (fn [db command]) reading the read model and answering
                `{:events [...]}` or `{:error ...}`; it writes nothing
-     :project  (fn [sql event]) folding one event into the read model
-   The store adds `:event/number` and `:event/at` to every event; the
+     :project  (fn [db event]) folding one event into the read model
+   `db` is the Object's SQLite, `ctx.storage.sql`: embedded, mutable,
+   synchronous, one per Object. The store adds `:event/number` and `:event/at` to every event; the
    domain owns the rest, `:event/type` included."
   (:require [cognitect.transit :as transit]))
 
@@ -31,8 +32,8 @@
 
 (defn exec
   "One SQL statement with its parameters; the rows as maps."
-  [^js sql statement & params]
-  (let [^js cursor (.apply (.-exec sql) sql (to-array (cons statement params)))]
+  [^js db statement & params]
+  (let [^js cursor (.apply (.-exec db) db (to-array (cons statement params)))]
     (mapv (fn [^js row]
             (into {} (map (fn [k] [(keyword k) (aget row k)])) (js/Object.keys row)))
           (.toArray cursor))))
@@ -40,23 +41,23 @@
 (defn schema!
   "The events table and the domain's tables, where they are missing."
   [^js storage {:keys [tables]}]
-  (let [sql (.-sql storage)]
-    (exec sql "create table if not exists events (number integer primary key, event text not null)")
+  (let [db (.-sql storage)]
+    (exec db "create table if not exists events (number integer primary key, event text not null)")
     (doseq [[_ ddl] tables]
-      (exec sql ddl))))
+      (exec db ddl))))
 
 (defn- append!
   "`events` appended after the last one and projected, inside the
    caller's transaction; the events with their numbers."
-  [sql {:keys [project]} events]
-  (let [last (:n (first (exec sql "select coalesce(max(number), 0) as n from events")))
+  [db {:keys [project]} events]
+  (let [last (:n (first (exec db "select coalesce(max(number), 0) as n from events")))
         at (.toISOString (js/Date.))]
     (vec (map-indexed
            (fn [i event]
              (let [event (assoc event :event/number (+ last i 1) :event/at at)]
-               (exec sql "insert into events (number, event) values (?, ?)"
+               (exec db "insert into events (number, event) values (?, ?)"
                      (:event/number event) (encode event))
-               (project sql event)
+               (project db event)
                event))
            events))))
 
@@ -68,10 +69,10 @@
   [^js storage {:keys [decide] :as domain} command]
   (.transactionSync storage
     (fn []
-      (let [sql (.-sql storage)
-            decision (decide sql command)]
+      (let [db (.-sql storage)
+            decision (decide db command)]
         (if (contains? decision :events)
-          {:events (append! sql domain (:events decision))}
+          {:events (append! db domain (:events decision))}
           decision)))))
 
 (defn events-after
@@ -90,9 +91,9 @@
   [^js storage {:keys [tables project] :as domain}]
   (.transactionSync storage
     (fn []
-      (let [sql (.-sql storage)]
+      (let [db (.-sql storage)]
         (doseq [[table _] tables]
-          (exec sql (str "drop table if exists " table)))
+          (exec db (str "drop table if exists " table)))
         (schema! storage domain)
         (doseq [event (events-after storage 0 -1)]
-          (project sql event))))))
+          (project db event))))))

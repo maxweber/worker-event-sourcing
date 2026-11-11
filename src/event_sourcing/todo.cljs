@@ -10,8 +10,8 @@
 
 (defn decide
   "The events of a command, or `{:error ...}`. Reads the read model
-   through `sql`, writes nothing."
-  [sql command]
+   through `db`, writes nothing."
+  [db command]
   (case (:command/type command)
     :todo/add
     (if (str/blank? (:todo/text command))
@@ -21,7 +21,7 @@
                  :todo/text (str/trim (:todo/text command))}]})
 
     :todo/complete
-    (let [todo (first (exec sql "select done from todos where id = ?" (:todo/id command)))]
+    (let [todo (first (exec db "select done from todos where id = ?" (:todo/id command)))]
       (cond
         (nil? todo) {:error "No such todo."}
         (= 1 (:done todo)) {:events []}
@@ -34,14 +34,14 @@
   "One event folded into the read model. It reads every event ever
    written, so an old shape is handled here; an unknown type throws,
    and a retired type gets a clause that ignores it."
-  [sql event]
+  [db event]
   (case (:event/type event)
-    :todo/added (exec sql "insert into todos (id, text) values (?, ?)" (:todo/id event) (:todo/text event))
-    :todo/completed (exec sql "update todos set done = 1 where id = ?" (:todo/id event))))
+    :todo/added (exec db "insert into todos (id, text) values (?, ?)" (:todo/id event) (:todo/text event))
+    :todo/completed (exec db "update todos set done = 1 where id = ?" (:todo/id event))))
 
 (def queries
   "The read model's queries, by the path they answer on."
-  {"todos" (fn [sql] (exec sql "select id, text, done from todos order by rowid"))})
+  {"todos" (fn [db] (exec db "select id, text, done from todos order by rowid"))})
 
 (def domain
   {:tables tables
