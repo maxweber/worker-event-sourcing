@@ -1,0 +1,20 @@
+{
+  "name": "worker-event-sourcing",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "build": "vite build --config vite.worker.config.mjs",
+    "dev": "npm run build && wrangler dev",
+    "deploy": "npm run build && wrangler deploy",
+    "test": "cljf build @cljs.edn :test && node target/test/event_sourcing/test_runner.js"
+  },
+  "devDependencies": {
+    "clojurific": "0.12.15",
+    "vite": "8.3.6",
+    "wrangler": "^4.158.0"
+  }
+}

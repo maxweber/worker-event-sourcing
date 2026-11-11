@@ -1,0 +1,8 @@
+;; The build options of cljf (clojurific) for the tests under Node:
+;; `cljf build @cljs.edn :test`. The Worker bundle itself is Vite's
+;; (vite.worker.config.mjs runs the compiler through its plugin).
+{:paths ["src" "test"]
+ :profiles {:test {:output-dir "target/test"
+                   :test-runner {:ns event-sourcing.test-runner
+                                 :ns-regexp "-test$"
+                                 :runner cljf.esm.node-test/run}}}}
