@@ -3,10 +3,9 @@
    device, whatever owns one history. A Worker reaches it through the
    binding, `(.get streams (.idFromName streams name))`, and calls the
    methods below on the stub. Commands, events and query results cross
-   the call as EDN text, so both sides keep plain Clojure data."
+   the call as transit JSON text, so both sides keep plain Clojure data."
   (:require ["cloudflare:workers" :refer [DurableObject]]
             [cljf.x :refer [defclass]]
-            [cljs.reader :as reader]
             [event-sourcing.store :as store]
             [event-sourcing.todo :as todo]))
 
@@ -23,15 +22,15 @@
     (super ctx env)
     (store/schema! (.-storage ctx) domain))
   Object
-  ;; one command, EDN; its events, or `{:error ...}`, EDN
+  ;; one command, transit; its events, or `{:error ...}`, transit
   (execute [this command]
-    (pr-str (store/execute! (.. this -ctx -storage) domain (reader/read-string command))))
-  ;; up to a page of events after number `after`, EDN
+    (store/encode (store/execute! (.. this -ctx -storage) domain (store/decode command))))
+  ;; up to a page of events after number `after`, transit
   (events [this after]
-    (pr-str (store/events-after (.. this -ctx -storage) after page)))
-  ;; the read model's query `name` (`todo/queries`), EDN
+    (store/encode (store/events-after (.. this -ctx -storage) after page)))
+  ;; the read model's query `name` (`todo/queries`), transit
   (query [this name]
-    (pr-str ((get (:queries domain) name) (.. this -ctx -storage -sql))))
+    (store/encode ((get (:queries domain) name) (.. this -ctx -storage -sql))))
   ;; the read model derived again from the events
   (rebuild [this]
     (store/rebuild! (.. this -ctx -storage) domain)

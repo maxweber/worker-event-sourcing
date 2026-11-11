@@ -14,11 +14,14 @@ Mostly written by Claude Code.
    time, so it is the stream's single writer, and nothing else writes.
    `idFromName(stream)` finds it.
 
-2. **Events are the truth.** The `events` table holds one EDN map per row,
+2. **Events are the truth.** The `events` table holds one event per row
+   as [transit](https://github.com/cognitect/transit-format) JSON,
    numbered without a gap, never updated, never deleted. The store adds
    `:event/number` and `:event/at`; the domain owns the rest,
    `:event/type` included. Events stay small: a blob goes to object
-   storage and its name into the event.
+   storage and its name into the event. Transit rather than EDN because
+   it reads an order of magnitude faster on V8
+   ([docs/codec-benchmark.md](docs/codec-benchmark.md)).
 
 3. **One transaction per command.** `decide` reads the read model and
    answers with events or an error. The events are appended and projected
@@ -48,24 +51,28 @@ Mostly written by Claude Code.
 
 | file | what |
 | --- | --- |
-| `src/event_sourcing/store.cljs` | the recipe: the events table, `execute!`, `events-after`, `rebuild!` |
+| `src/event_sourcing/store.cljs` | the recipe: the events table, `execute!`, `events-after`, `rebuild!`, the codec |
 | `src/event_sourcing/todo.cljs` | the example domain: `tables`, `decide`, `project`, `queries` |
 | `src/event_sourcing/stream.cljs` | the Durable Object: the store behind `execute`, `events`, `query`, `rebuild` |
 | `test/event_sourcing/` | the store exercised on a `node:sqlite` stand-in of the Object's storage |
+| `docs/codec-benchmark.md` | transit against EDN, measured |
 
 ## From a Worker
 
-The Object's methods take and answer EDN text. With the `STREAM` binding
-of `wrangler.jsonc`:
+The Object's methods take and answer transit JSON text. With the `STREAM`
+binding of `wrangler.jsonc`:
 
 ```clojure
+(def writer (transit/writer :json))
+(def reader (transit/reader :json))
+
 (let [^js streams (.-STREAM env)
       ^js stream (.get streams (.idFromName streams "acme"))]
-  (reader/read-string (await (.execute stream (pr-str {:command/type :todo/add :todo/text "Ship it"}))))
+  (transit/read reader (await (.execute stream (transit/write writer {:command/type :todo/add :todo/text "Ship it"}))))
   ;; => {:events [{:event/type :todo/added, :todo/id "…", :todo/text "Ship it", :event/number 1, :event/at "…"}]}
-  (reader/read-string (await (.query stream "todos")))
+  (transit/read reader (await (.query stream "todos")))
   ;; => [{:id "…", :text "Ship it", :done 0}]
-  (reader/read-string (await (.events stream 0))))
+  (transit/read reader (await (.events stream 0))))
   ;; => the events after number 0, up to 100
 ```
 

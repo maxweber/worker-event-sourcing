@@ -1,10 +1,10 @@
 (ns event-sourcing.store
   "Event sourcing in the SQLite of a Durable Object. The Object runs one
    request at a time, so it is the single writer of its stream. The
-   `events` table is the truth: one EDN map per row, numbered without a
-   gap, never updated, never deleted. The read model is derived from it
-   by the domain's `project`, in the transaction that appends the
-   events, and can be dropped and derived again at any time.
+   `events` table is the truth: one event per row as transit JSON,
+   numbered without a gap, never updated, never deleted. The read model
+   is derived from it by the domain's `project`, in the transaction that
+   appends the events, and can be dropped and derived again at any time.
 
    A domain is a map:
      :tables   table name to its `create table if not exists` statement
@@ -13,7 +13,21 @@
      :project  (fn [sql event]) folding one event into the read model
    The store adds `:event/number` and `:event/at` to every event; the
    domain owns the rest, `:event/type` included."
-  (:require [cljs.reader :as reader]))
+  (:require [cognitect.transit :as transit]))
+
+(def ^:private writer (transit/writer :json))
+(def ^:private reader (transit/reader :json))
+
+(defn encode
+  "Data as transit JSON text: how an event is stored, and how commands,
+   events and query results cross the Object's boundary. Transit, not
+   EDN: it reads an order of magnitude faster on V8 (docs/codec-benchmark.md)."
+  [data]
+  (transit/write writer data))
+
+(defn decode
+  [text]
+  (transit/read reader text))
 
 (defn exec
   "One SQL statement with its parameters; the rows as maps."
@@ -41,7 +55,7 @@
            (fn [i event]
              (let [event (assoc event :event/number (+ last i 1) :event/at at)]
                (exec sql "insert into events (number, event) values (?, ?)"
-                     (:event/number event) (pr-str event))
+                     (:event/number event) (encode event))
                (project sql event)
                event))
            events))))
@@ -65,7 +79,7 @@
    start, `limit` -1 every one. A consumer keeps the last number it saw
    as its cursor and asks again from there."
   [^js storage after limit]
-  (mapv #(reader/read-string (:event %))
+  (mapv #(decode (:event %))
         (exec (.-sql storage)
               "select event from events where number > ? order by number limit ?"
               after limit)))

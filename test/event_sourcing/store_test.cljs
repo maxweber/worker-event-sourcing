@@ -30,7 +30,8 @@
       (is (= [{:id id :text "Ship it" :done 1}] (todos storage))))
     (testing "a command that changes nothing has no event"
       (is (= {:events []} (store/execute! storage todo/domain {:command/type :todo/complete :todo/id id}))))
-    (testing "the log is read after a cursor"
+    (testing "the log is read after a cursor, each event as it was appended"
+      (is (= added (first (store/events-after storage 0 100))))
       (is (= [1 2] (map :event/number (store/events-after storage 0 100))))
       (is (= [2] (map :event/number (store/events-after storage 1 100))))
       (is (= [] (store/events-after storage 2 100))))
