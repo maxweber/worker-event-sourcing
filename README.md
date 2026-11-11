@@ -56,6 +56,7 @@ Mostly written by Claude Code.
 | `src/event_sourcing/stream.cljs` | the Durable Object: the store behind `execute`, `events`, `query`, `rebuild` |
 | `test/event_sourcing/` | the store exercised on a `node:sqlite` stand-in of the Object's storage |
 | `docs/codec-benchmark.md` | transit against EDN, measured |
+| `docs/sql-strings.md` | SQL strings with bindings, not a query DSL: why |
 
 ## From a Worker
 
