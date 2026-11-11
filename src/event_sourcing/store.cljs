@@ -7,7 +7,8 @@
    appends the events, and can be dropped and derived again at any time.
 
    A domain is a map:
-     :tables   table name to its `create table if not exists` statement
+     :tables   table name to its `create table if not exists` statement;
+               none of them may be the store's own `events`
      :decide   (fn [db command]) reading the read model and answering
                `{:events [...]}` or `{:error ...}`; it writes nothing
      :project  (fn [event]) answering the statements that fold one event
@@ -16,7 +17,8 @@
    synchronous, one per Object. The store adds `:event/number` and
    `:event/at` to every event; the domain owns the rest, `:event/type`
    included."
-  (:require [cognitect.transit :as transit]))
+  (:require [clojure.string :as str]
+            [cognitect.transit :as transit]))
 
 (def ^:private writer (transit/writer :json))
 (def ^:private reader (transit/reader :json))
@@ -44,10 +46,20 @@
             (into {} (map (fn [k] [(keyword k) (aget row k)])) (js/Object.keys row)))
           (.toArray cursor))))
 
+(defn- read-model-tables
+  "The domain's tables, which the store creates and drops; it refuses a
+   domain that names its own `events` table, so that no rebuild can
+   drop the log. SQLite ignores the case of a table name, so does this."
+  [{:keys [tables]}]
+  (when (some #(= "events" (str/lower-case %)) (keys tables))
+    (throw (ex-info "The events table is the store's; a domain cannot declare it." {:tables (keys tables)})))
+  tables)
+
 (defn schema!
   "The events table and the domain's tables, where they are missing."
-  [^js storage {:keys [tables]}]
-  (let [db (.-sql storage)]
+  [^js storage domain]
+  (let [db (.-sql storage)
+        tables (read-model-tables domain)]
     (exec db "create table if not exists events (number integer primary key, event text not null)")
     (doseq [[_ ddl] tables]
       (exec db ddl))))
@@ -101,11 +113,11 @@
   "The read model dropped and derived again from every event, in one
    transaction: after a projection changed, or when in doubt. It reads
    its own log as any consumer does, a page after a cursor at a time."
-  [^js storage {:keys [tables project] :as domain}]
+  [^js storage {:keys [project] :as domain}]
   (.transactionSync storage
     (fn []
       (let [db (.-sql storage)]
-        (doseq [[table _] tables]
+        (doseq [[table _] (read-model-tables domain)]
           (exec db (str "drop table if exists " table)))
         (schema! storage domain)
         (loop [after 0]

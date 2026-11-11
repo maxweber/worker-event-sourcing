@@ -61,3 +61,13 @@
          (todo/project {:event/type :todo/added :todo/id "t1" :todo/text "Ship it"})))
   (is (= [["update todos set done = 1 where id = ?" "t1"]]
          (todo/project {:event/type :todo/completed :todo/id "t1"}))))
+
+
+(deftest the-log-cannot-be-dropped
+  (let [storage (fake/storage)
+        _ (store/schema! storage todo/domain)
+        _ (store/execute! storage todo/domain {:command/type :todo/add :todo/text "Keep me"})
+        careless (assoc-in todo/domain [:tables "Events"] "create table if not exists Events (x)")]
+    (is (thrown? js/Error (store/schema! storage careless)))
+    (is (thrown? js/Error (store/rebuild! storage careless)))
+    (is (= 1 (count (store/events-after storage 0 100))))))
