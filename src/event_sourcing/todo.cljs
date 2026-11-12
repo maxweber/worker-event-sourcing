@@ -6,9 +6,9 @@
             [event-sourcing.store :refer [exec]]))
 
 (def version
-  "A new UUID, committed with the change, whenever `tables` or
-   `project` change: a stream built under another version derives its
-   read model again at its first use."
+  "A new UUID, as a string, committed with the change, whenever
+   `tables` or `project` change: a stream built under another version
+   derives its read model again at its first use."
   "01e84faa-17bc-44c5-83f5-5a3f3a354730")
 
 (def tables

@@ -98,9 +98,10 @@
       (store/schema! storage v2)
       (is (= [{:id id :text "Ship it" :done 0 :upper "SHIP IT"}]
              (store/exec (.-sql storage) "select id, text, done, upper from todos"))))
-    (testing "the version is recorded, so the next construction does nothing"
+    (testing "the version is recorded, so the next construction does nothing, a uuid literal included"
       (tamper!)
       (store/schema! storage v2)
+      (store/schema! storage (assoc v2 :version (uuid "a-new-uuid")))
       (is (= [{:id id :text "tampered" :done 0 :upper "SHIP IT"}]
              (store/exec (.-sql storage) "select id, text, done, upper from todos"))))))
 

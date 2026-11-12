@@ -7,7 +7,7 @@
    appends the events, and can be dropped and derived again at any time.
 
    A domain is a map:
-     :version  a UUID literal: a new one, committed with the change,
+     :version  a UUID as a string: a new one, committed with the change,
                whenever `tables` or `project` change; a stream built
                under another version is derived again at its first use
      :tables   table name to its `create table if not exists` statement;
@@ -94,7 +94,7 @@
   (let [db (.-sql storage)]
     (exec db "create table if not exists events (number integer primary key, event text not null)")
     (exec db "create table if not exists projection (version text not null)")
-    (if (= (:version domain) (:version (first (exec db "select version from projection"))))
+    (if (= (str (:version domain)) (:version (first (exec db "select version from projection"))))
       (create-tables! db domain)
       (rebuild! storage domain))))
 
@@ -184,4 +184,4 @@
             (when (= page (count events))
               (recur (:event/number (peek events))))))
         (exec db "delete from projection")
-        (exec db "insert into projection (version) values (?)" version)))))
+        (exec db "insert into projection (version) values (?)" (str version))))))
