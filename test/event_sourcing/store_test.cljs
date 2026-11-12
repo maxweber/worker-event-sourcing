@@ -100,3 +100,17 @@
       (store/schema! storage v2)
       (is (= [{:id id :text "tampered" :done 0 :upper "SHIP IT"}]
              (store/exec (.-sql storage) "select id, text, done, upper from todos"))))))
+
+(deftest a-parameter-is-text-a-number-nil-or-bytes
+  (let [storage (fake/storage)
+        db (.-sql storage)]
+    (store/exec db "create table t (v)")
+    (is (= [] (store/exec db "insert into t (v) values (?)" "text")))
+    (is (= [] (store/exec db "insert into t (v) values (?)" 1.5)))
+    (is (= [] (store/exec db "insert into t (v) values (?)" nil)))
+    (is (= [] (store/exec db "insert into t (v) values (?)" (js/Uint8Array. #js [1 2]))))
+    (is (thrown? js/Error (store/exec db "insert into t (v) values (?)" :image)))
+    (is (thrown? js/Error (store/exec db "insert into t (v) values (?)" true)))
+    (is (thrown? js/Error (store/exec db "insert into t (v) values (?)" (js/Date.))))
+    (is (thrown? js/Error (store/exec db "insert into t (v) values (?)" js/NaN)))
+    (is (= 4 (:n (first (store/exec db "select count(*) as n from t")))))))

@@ -42,9 +42,26 @@
   "How many events one read of the log hands out."
   100)
 
+(defn- binding?
+  "What SQLite can bind: text, a finite number, nil, or bytes."
+  [value]
+  (or (string? value)
+      (and (number? value) (js/Number.isFinite value))
+      (nil? value)
+      (instance? js/Uint8Array value)
+      (instance? js/ArrayBuffer value)))
+
 (defn exec
-  "One SQL statement with its parameters; the rows as maps."
+  "One SQL statement with its parameters; the rows as maps. A parameter
+   that SQLite cannot bind throws here, in the fake and on workerd
+   alike: workerd would otherwise store its text, `true` as \"true\"
+   and a keyword as \":image\", and nothing would fail."
   [^js db statement & params]
+  (doseq [[i value] (map-indexed vector params)]
+    (when-not (binding? value)
+      (throw (ex-info (str "Parameter " (inc i) " of \"" statement "\" cannot be bound: " (pr-str value)
+                           ". Bind text, a finite number, nil or bytes.")
+                      {:statement statement :index (inc i) :value value}))))
   (let [^js cursor (.apply (.-exec db) db (to-array (cons statement params)))]
     (mapv (fn [^js row]
             (into {} (map (fn [k] [(keyword k) (aget row k)])) (js/Object.keys row)))
