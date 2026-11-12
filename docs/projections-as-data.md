@@ -9,7 +9,7 @@ model instead of running them. Decided 2026-11-11.
 statements, each a vector of SQL text and its parameters, in order; `nil`
 or an empty sequence for an event that touches no table; an unknown type
 throws, and a retired type gets a clause that answers `nil`. The store
-runs the statements with `exec`, inside the transaction that appends the
+runs the statements with `exec!`, inside the transaction that appends the
 event, and again on a rebuild.
 
 ```clojure
