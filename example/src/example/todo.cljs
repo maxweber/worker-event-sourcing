@@ -2,7 +2,7 @@
   "The example domain, todos: commands decided against the read model,
    events folded into it as statements. The library does not know it."
   (:require [clojure.string :as str]
-            [worker-event-sourcing.store :refer [exec]]))
+            [worker-event-sourcing.store :refer [select]]))
 
 (def version
   "A new UUID, as a string, committed with the change, whenever
@@ -26,7 +26,7 @@
                  :todo/text (str/trim (:todo/text command))}]})
 
     :todo/complete
-    (let [todo (first (exec db "select done from todos where id = ?" (:todo/id command)))]
+    (let [todo (first (select db "select done from todos where id = ?" (:todo/id command)))]
       (cond
         (nil? todo) {:error "No such todo."}
         (= 1 (:done todo)) {:events []}
@@ -47,7 +47,7 @@
 
 (def queries
   "The read model's queries, by name."
-  {"todos" (fn [db] (exec db "select id, text, done from todos order by rowid"))})
+  {"todos" (fn [db] (select db "select id, text, done from todos order by rowid"))})
 
 (def domain
   {:version version

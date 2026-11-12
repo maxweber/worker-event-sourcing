@@ -27,8 +27,9 @@ Mostly written by Claude Code.
    it reads an order of magnitude faster on V8
    ([docs/codec-benchmark.md](docs/codec-benchmark.md)).
 
-3. **One transaction per command.** `decide` reads the read model and
-   answers with events or an error. The events are appended and projected
+3. **One transaction per command.** `decide` reads the read model
+   through `select`, which runs one `select` and refuses anything else,
+   and answers with events or an error. The events are appended and projected
    into the read model, and the transaction commits (`transactionSync`).
    An error writes nothing, even if `decide` touched a table: the
    transaction ends in a rollback. A projection that throws rolls the
@@ -85,9 +86,9 @@ A domain is a map; `example/src/example/todo.cljs` is a complete one:
 | --- | --- |
 | `:version` | a UUID as a string, a new one whenever `tables` or `project` change |
 | `:tables` | table name to its `create table if not exists` statement |
-| `:decide` | `(fn [db command])` reading the read model, answering `{:events [...]}` or `{:error ...}` |
+| `:decide` | `(fn [db command])` reading the read model with `select`, answering `{:events [...]}` or `{:error ...}` |
 | `:project` | `(fn [event])` answering the statements that fold one event in, `[[sql & params] ...]` |
-| `:queries` | query name to `(fn [db])` answering data |
+| `:queries` | query name to `(fn [db])` reading with `select`, answering data |
 
 The Worker's module defines the Object with it:
 
@@ -124,7 +125,7 @@ the query's name as a string, and `rebuild` answers nothing. With the
 
 | path | what |
 | --- | --- |
-| `src/worker_event_sourcing/store.cljs` | the recipe: the events table, `execute!`, `events-after`, `rebuild!`, the codec |
+| `src/worker_event_sourcing/store.cljs` | the recipe: the events table, `execute!`, `events-after`, `rebuild!`, `select` and `exec!`, the codec |
 | `src/worker_event_sourcing/stream.cljs` | `defstream`, and the Object's methods over the store |
 | `test/worker_event_sourcing/` | the store exercised on a `node:sqlite` stand-in of the Object's storage, with a todo domain as the fixture |
 | `example/` | the library as a Worker: the todo domain, its `Stream`, and tests of the Object inside workerd |

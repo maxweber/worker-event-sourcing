@@ -54,21 +54,38 @@
       (instance? js/Uint8Array value)
       (instance? js/ArrayBuffer value)))
 
-(defn exec
-  "One SQL statement with its parameters; the rows as maps. A parameter
-   that SQLite cannot bind throws here, in the fake and on workerd
-   alike: workerd would otherwise store its text, `true` as \"true\"
-   and a keyword as \":image\", and nothing would fail."
-  [^js db statement & params]
+(defn- check-bindings!
+  "A parameter that SQLite cannot bind throws here, in the fake and on
+   workerd alike: workerd would otherwise store its text, `true` as
+   \"true\" and a keyword as \":image\", and nothing would fail."
+  [statement params]
   (doseq [[i value] (map-indexed vector params)]
     (when-not (binding? value)
       (throw (ex-info (str "Parameter " (inc i) " of \"" statement "\" cannot be bound: " (pr-str value)
                            ". Bind text, a finite number, nil or bytes.")
-                      {:statement statement :index (inc i) :value value}))))
-  (let [^js cursor (.apply (.-exec db) db (to-array (cons statement params)))]
-    (mapv (fn [^js row]
-            (into {} (map (fn [k] [(keyword k) (aget row k)])) (js/Object.keys row)))
-          (.toArray cursor))))
+                      {:statement statement :index (inc i) :value value})))))
+
+(defn- run
+  [^js db statement params]
+  (check-bindings! statement params)
+  (.toArray (.apply (.-exec db) db (to-array (cons statement params)))))
+
+(defn select
+  "The rows of one `select` statement and its parameters, as maps: what
+   a decision and a query read with. Anything but one `select` is
+   refused, so that nothing writes through it."
+  [^js db statement & params]
+  (when-not (and (re-find #"(?i)^\s*select\b" statement) (not (str/includes? statement ";")))
+    (throw (ex-info (str "Not one select statement: \"" statement "\"") {:statement statement})))
+  (mapv (fn [^js row]
+          (into {} (map (fn [k] [(keyword k) (aget row k)])) (js/Object.keys row)))
+        (run db statement params)))
+
+(defn exec!
+  "One statement for its effect: DDL, an insert, an update, a delete."
+  [^js db statement & params]
+  (run db statement params)
+  nil)
 
 (defn- read-model-tables
   "The domain's tables, which the store creates and drops; it refuses a
@@ -83,7 +100,7 @@
 (defn- create-tables!
   [db domain]
   (doseq [[_ ddl] (read-model-tables domain)]
-    (exec db ddl)))
+    (exec! db ddl)))
 
 (declare rebuild!)
 
@@ -100,10 +117,10 @@
    projection takes effect at a stream's first use after the deploy."
   [^js storage domain]
   (let [db (.-sql storage)]
-    (exec db "create table if not exists events (number integer primary key, command_id text, event text not null)")
-    (exec db "create index if not exists events_command_id on events (command_id)")
-    (exec db "create table if not exists projection (version text not null, tables text not null)")
-    (if (= (str (:version domain)) (:version (first (exec db "select version from projection"))))
+    (exec! db "create table if not exists events (number integer primary key, command_id text, event text not null)")
+    (exec! db "create index if not exists events_command_id on events (command_id)")
+    (exec! db "create table if not exists projection (version text not null, tables text not null)")
+    (if (= (str (:version domain)) (:version (first (select db "select version from projection"))))
       (create-tables! db domain)
       (rebuild! storage domain))))
 
@@ -111,7 +128,7 @@
   "The statements of a projection, each SQL text and its parameters, in order."
   [db statements]
   (doseq [statement statements]
-    (apply exec db statement)))
+    (apply exec! db statement)))
 
 (def command-id-limit
   "How long a command id may be, in characters."
@@ -136,12 +153,12 @@
    caller's transaction, recording the command's id; the events with
    their numbers."
   [db {:keys [project]} command-id events]
-  (let [last (:n (first (exec db "select coalesce(max(number), 0) as n from events")))
+  (let [last (:n (first (select db "select coalesce(max(number), 0) as n from events")))
         at (.toISOString (js/Date.))]
     (reduce (fn [appended event]
               (let [event (cond-> (assoc event :event/number (+ last (count appended) 1) :event/at at)
                             command-id (assoc :event/command-id command-id))]
-                (exec db "insert into events (number, command_id, event) values (?, ?, ?)"
+                (exec! db "insert into events (number, command_id, event) values (?, ?, ?)"
                       (:event/number event) command-id (encode event))
                 (run! db (project event))
                 (conj appended event)))
@@ -173,7 +190,7 @@
                 id (command-id command)
                 done (when id
                        (mapv #(decode (:event %))
-                             (exec db "select event from events where command_id = ? order by number" id)))]
+                             (select db "select event from events where command_id = ? order by number" id)))]
             (if (seq done)
               {:events done}
               (let [decision (decide db command)]
@@ -199,7 +216,7 @@
     (throw (ex-info (str "The cursor to read after must be a non-negative number, not " (pr-str after))
                     {:after after})))
   (mapv #(decode (:event %))
-        (exec (.-sql storage)
+        (select (.-sql storage)
               "select event from events where number > ? order by number limit ?"
               after limit)))
 
@@ -214,9 +231,9 @@
     (fn []
       (let [db (.-sql storage)
             tables (read-model-tables domain)
-            previous (some-> (first (exec db "select tables from projection")) :tables decode)]
+            previous (some-> (first (select db "select tables from projection")) :tables decode)]
         (doseq [table previous]
-          (exec db (str "drop table if exists " (quoted table))))
+          (exec! db (str "drop table if exists " (quoted table))))
         (create-tables! db domain)
         (loop [after 0]
           (let [events (events-after storage after page)]
@@ -224,5 +241,5 @@
               (run! db (project event)))
             (when (= page (count events))
               (recur (:event/number (peek events))))))
-        (exec db "delete from projection")
-        (exec db "insert into projection (version, tables) values (?, ?)" (str version) (encode (vec (keys tables))))))))
+        (exec! db "delete from projection")
+        (exec! db "insert into projection (version, tables) values (?, ?)" (str version) (encode (vec (keys tables))))))))

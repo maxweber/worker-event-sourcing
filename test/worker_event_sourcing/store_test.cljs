@@ -82,7 +82,7 @@
         _ (store/schema! storage todo/domain)
         {[added] :events} (store/execute! storage todo/domain {:command/type :todo/add :todo/text "Ship it"})
         id (:todo/id added)
-        tamper! #(store/exec (.-sql storage) "update todos set text = 'tampered'")
+        tamper! #(store/exec! (.-sql storage) "update todos set text = 'tampered'")
         v2 (-> todo/domain
                (assoc :version "a-new-uuid")
                (assoc-in [:tables "todos"] "create table if not exists todos (id text primary key, text text not null, done integer not null default 0, upper text)")
@@ -97,34 +97,35 @@
     (testing "a new version derives the read model again, in its new shape"
       (store/schema! storage v2)
       (is (= [{:id id :text "Ship it" :done 0 :upper "SHIP IT"}]
-             (store/exec (.-sql storage) "select id, text, done, upper from todos"))))
+             (store/select (.-sql storage) "select id, text, done, upper from todos"))))
     (testing "the version is recorded, so the next construction does nothing, a uuid literal included"
       (tamper!)
       (store/schema! storage v2)
       (store/schema! storage (assoc v2 :version (uuid "a-new-uuid")))
       (is (= [{:id id :text "tampered" :done 0 :upper "SHIP IT"}]
-             (store/exec (.-sql storage) "select id, text, done, upper from todos"))))))
+             (store/select (.-sql storage) "select id, text, done, upper from todos"))))))
 
 (deftest a-parameter-is-text-a-number-nil-or-bytes
   (let [storage (fake/storage)
         db (.-sql storage)]
-    (store/exec db "create table t (v)")
-    (is (= [] (store/exec db "insert into t (v) values (?)" "text")))
-    (is (= [] (store/exec db "insert into t (v) values (?)" 1.5)))
-    (is (= [] (store/exec db "insert into t (v) values (?)" nil)))
-    (is (= [] (store/exec db "insert into t (v) values (?)" (js/Uint8Array. #js [1 2]))))
-    (is (thrown? js/Error (store/exec db "insert into t (v) values (?)" :image)))
-    (is (thrown? js/Error (store/exec db "insert into t (v) values (?)" true)))
-    (is (thrown? js/Error (store/exec db "insert into t (v) values (?)" (js/Date.))))
-    (is (thrown? js/Error (store/exec db "insert into t (v) values (?)" js/NaN)))
-    (is (= 4 (:n (first (store/exec db "select count(*) as n from t")))))))
+    (store/exec! db "create table t (v)")
+    (doseq [v ["text" 1.5 nil (js/Uint8Array. #js [1 2])]]
+      (store/exec! db "insert into t (v) values (?)" v))
+    (doseq [v [:image true (js/Date.) js/NaN]]
+      (is (thrown? js/Error (store/exec! db "insert into t (v) values (?)" v)))
+      (is (thrown? js/Error (store/select db "select v from t where v = ?" v))))
+    (is (= 4 (:n (first (store/select db "select count(*) as n from t")))))
+    (testing "select reads and nothing else"
+      (is (thrown? js/Error (store/select db "insert into t (v) values (1)")))
+      (is (thrown? js/Error (store/select db "select 1; delete from t")))
+      (is (= 4 (:n (first (store/select db "select count(*) as n from t"))))))))
 
 (deftest a-rejection-rolls-back-what-decide-touched
   (let [storage (fake/storage)
         _ (store/schema! storage todo/domain)
         _ (store/execute! storage todo/domain {:command/type :todo/add :todo/text "Ship it"})
         careless (assoc todo/domain :decide (fn [db _]
-                                              (store/exec db "update todos set text = 'touched'")
+                                              (store/exec! db "update todos set text = 'touched'")
                                               {:error "No."}))]
     (is (= {:error "No."} (store/execute! storage careless {})))
     (is (= ["Ship it"] (map :text (todos storage))))
@@ -138,7 +139,7 @@
         db (.-sql storage)
         _ (store/schema! storage todo/domain)
         _ (store/execute! storage todo/domain {:command/type :todo/add :todo/text "Ship it"})
-        _ (store/exec db "create table notes (note text)")
+        _ (store/exec! db "create table notes (note text)")
         renamed (-> todo/domain
                     (assoc :version "renamed")
                     (assoc :tables {"items" "create table if not exists items (id text primary key, text text not null)"})
@@ -146,11 +147,11 @@
                                       (case (:event/type event)
                                         :todo/added [["insert into items (id, text) values (?, ?)" (:todo/id event) (:todo/text event)]]
                                         :todo/completed nil))))
-        tables #(set (map :name (store/exec db "select name from sqlite_master where type = 'table'")))]
+        tables #(set (map :name (store/select db "select name from sqlite_master where type = 'table'")))]
     (testing "the renamed version drops todos, builds items, leaves notes alone"
       (store/schema! storage renamed)
       (is (= #{"events" "projection" "items" "notes"} (tables)))
-      (is (= ["Ship it"] (map :text (store/exec db "select text from items")))))
+      (is (= ["Ship it"] (map :text (store/select db "select text from items")))))
     (testing "a key is a name and nothing else"
       (store/schema! storage (-> renamed (assoc :version "tricky") (assoc-in [:tables "x; drop table events"] "create table if not exists x (y)")))
       (store/schema! storage (assoc renamed :version "after"))
@@ -188,7 +189,7 @@
         broken (-> todo/domain (assoc :version "broken") (assoc :project (fn [_] [["insert into nowhere (x) values (1)"]])))]
     (is (thrown? js/Error (store/schema! storage broken)))
     (is (= ["Ship it"] (map :text (todos storage))))
-    (is (= (str todo/version) (:version (first (store/exec db "select version from projection")))))))
+    (is (= (str todo/version) (:version (first (store/select db "select version from projection")))))))
 
 (deftest the-store-owns-the-number-and-the-time-of-an-event
   (let [storage (fake/storage)
@@ -212,6 +213,6 @@
   (let [storage (fake/storage)
         db (.-sql storage)
         _ (store/schema! storage todo/domain)
-        _ (store/exec db "insert into events (number, event) values (1, 'not transit')")]
+        _ (store/exec! db "insert into events (number, event) values (1, 'not transit')")]
     (is (thrown? js/Error (store/schema! storage (assoc todo/domain :version "next"))))
-    (is (= 1 (count (store/exec db "select number from events"))))))
+    (is (= 1 (count (store/select db "select number from events"))))))

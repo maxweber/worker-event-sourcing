@@ -7,7 +7,7 @@ Decided 2026-11-11.
 ## The decision
 
 A statement is a vector of SQL text and its parameters. A projection
-answers them as data, and the store runs them with `exec`:
+answers them as data, and the store runs them with `exec!`:
 
 ```clojure
 [["update todos set done = 1 where id = ?" (:todo/id event)]]
@@ -33,7 +33,7 @@ declares.
   every projected event on the single-threaded Object, and add a
   dependency to every Worker's bundle. The string form has neither cost.
 - **Safety is equal.** Parameters go through bindings either way. What
-  can be bound is text, a finite number, nil or bytes; `exec` throws on
+  can be bound is text, a finite number, nil or bytes; `select` and `exec!` throw on
   anything else, because workerd would otherwise store the value's text,
   `true` as `"true"`, a keyword as `":image"`, and nothing would fail.
 
