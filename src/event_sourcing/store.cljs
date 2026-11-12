@@ -119,19 +119,38 @@
             []
             events)))
 
+(def ^:private rejected
+  "Thrown inside the transaction for a decision without events, so that
+   whatever `decide` touched rolls back with it; caught by `execute!`,
+   which answers the decision."
+  (js/Error. "rejected"))
+
 (defn execute!
   "One command in one transaction: `decide` reads the read model and
    answers with events or an error; the events are appended and
-   projected; the transaction commits. An error writes nothing. A
-   projection that throws rolls the events back with it."
+   projected; the transaction commits. An error writes nothing, even if
+   `decide` touched a table: the transaction ends in a rollback. A
+   projection that throws rolls the events back with it. A decision
+   that is not `{:events [...]}` or `{:error ...}` throws."
   [^js storage {:keys [decide] :as domain} command]
-  (.transactionSync storage
-    (fn []
-      (let [db (.-sql storage)
-            decision (decide db command)]
-        (if (contains? decision :events)
-          {:events (append! db domain (:events decision))}
-          decision)))))
+  (let [answer (volatile! nil)]
+    (try
+      (.transactionSync storage
+        (fn []
+          (let [db (.-sql storage)
+                decision (decide db command)]
+            (when-not (and (map? decision)
+                           (not= (contains? decision :events) (contains? decision :error)))
+              (throw (ex-info (str "A decision is {:events [...]} or {:error ...}, not " (pr-str decision))
+                              {:decision decision})))
+            (if (contains? decision :events)
+              {:events (append! db domain (:events decision))}
+              (do (vreset! answer decision)
+                  (throw rejected))))))
+      (catch :default e
+        (if (identical? e rejected)
+          @answer
+          (throw e))))))
 
 (defn events-after
   "Up to `limit` events after number `after`, in order; `after` 0 is the

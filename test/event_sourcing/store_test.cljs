@@ -117,3 +117,17 @@
     (is (thrown? js/Error (store/exec db "insert into t (v) values (?)" (js/Date.))))
     (is (thrown? js/Error (store/exec db "insert into t (v) values (?)" js/NaN)))
     (is (= 4 (:n (first (store/exec db "select count(*) as n from t")))))))
+
+(deftest a-rejection-rolls-back-what-decide-touched
+  (let [storage (fake/storage)
+        _ (store/schema! storage todo/domain)
+        _ (store/execute! storage todo/domain {:command/type :todo/add :todo/text "Ship it"})
+        careless (assoc todo/domain :decide (fn [db _]
+                                              (store/exec db "update todos set text = 'touched'")
+                                              {:error "No."}))]
+    (is (= {:error "No."} (store/execute! storage careless {})))
+    (is (= ["Ship it"] (map :text (todos storage))))
+    (is (thrown? js/Error (store/execute! storage (assoc todo/domain :decide (fn [_ _] nil)) {})))
+    (is (thrown? js/Error (store/execute! storage (assoc todo/domain :decide (fn [_ _] [{:event/type :todo/added}])) {})))
+    (is (thrown? js/Error (store/execute! storage (assoc todo/domain :decide (fn [_ _] {:events [] :error "both"})) {})))
+    (is (= 1 (count (store/events-after storage 0 100))))))

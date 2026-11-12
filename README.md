@@ -26,8 +26,9 @@ Mostly written by Claude Code.
 3. **One transaction per command.** `decide` reads the read model and
    answers with events or an error. The events are appended and projected
    into the read model, and the transaction commits (`transactionSync`).
-   An error writes nothing. A projection that throws rolls the events
-   back with it. `{:events []}` is a command that changed nothing.
+   An error writes nothing, even if `decide` touched a table: the
+   transaction ends in a rollback. A projection that throws rolls the
+   events back with it. `{:events []}` is a command that changed nothing.
 
 4. **The read model is derived.** `project` turns one event into the
    statements that fold it into the tables, SQL text and parameters as
