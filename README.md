@@ -12,13 +12,16 @@ Mostly written by Claude Code.
 1. **One Durable Object per stream.** A stream is one history: an
    organization, a customer, a device. The Object runs one request at a
    time, so it is the stream's single writer, and nothing else writes.
-   `idFromName(stream)` finds it.
+   That holds as long as nothing in `execute` or `decide` awaits;
+   anything external is a consumer's job. `idFromName(stream)` finds
+   it.
 
 2. **Events are the truth.** The `events` table holds one event per row
    as [transit](https://github.com/cognitect/transit-format) JSON,
    numbered without a gap, never updated, never deleted. The store adds
-   `:event/number` and `:event/at`; the domain owns the rest,
-   `:event/type` included. Events stay small: a blob goes to object
+   `:event/number` and `:event/at`, and `:event/command-id` when the
+   command carried an id; the domain owns the rest, `:event/type`
+   included. Events stay small: a blob goes to object
    storage and its name into the event. Transit rather than EDN because
    it reads an order of magnitude faster on V8
    ([docs/codec-benchmark.md](docs/codec-benchmark.md)).
@@ -60,8 +63,11 @@ Mostly written by Claude Code.
 
 6. **Outside the Object.** A side effect is recorded as an event and
    performed by a consumer with its own cursor, never while deciding. A
-   request that may be retried carries an id, and the id is decided like
-   any other fact.
+   request that may be retried carries `:command/id`, a string of at
+   most 128 characters: the events it produced record it, and a retry
+   is answered with them again, without deciding. A rejection records
+   nothing, so its retry is decided afresh, and a flood of rejected
+   commands costs CPU, never storage.
 
 ## Layout
 
@@ -86,8 +92,8 @@ binding of `wrangler.jsonc`:
 
 (let [^js streams (.-STREAM env)
       ^js stream (.get streams (.idFromName streams "acme"))]
-  (transit/read reader (await (.execute stream (transit/write writer {:command/type :todo/add :todo/text "Ship it"}))))
-  ;; => {:events [{:event/type :todo/added, :todo/id "…", :todo/text "Ship it", :event/number 1, :event/at "…"}]}
+  (transit/read reader (await (.execute stream (transit/write writer {:command/id "req-1" :command/type :todo/add :todo/text "Ship it"}))))
+  ;; => {:events [{:event/type :todo/added, :todo/id "…", :todo/text "Ship it", :event/number 1, :event/at "…", :event/command-id "req-1"}]}
   (transit/read reader (await (.query stream "todos")))
   ;; => [{:id "…", :text "Ship it", :done 0}]
   (transit/read reader (await (.events stream 0))))

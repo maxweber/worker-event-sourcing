@@ -156,3 +156,26 @@
       (store/schema! storage (assoc renamed :version "after"))
       (is (= #{"events" "projection" "items" "notes" "x"} (tables)))
       (is (= 1 (count (store/events-after storage 0 100)))))))
+
+(deftest a-retried-command-answers-what-it-did-the-first-time
+  (let [storage (fake/storage)
+        _ (store/schema! storage todo/domain)
+        command {:command/id "req-1" :command/type :todo/add :todo/text "Ship it"}
+        first-answer (store/execute! storage todo/domain command)
+        again (store/execute! storage todo/domain command)]
+    (is (= first-answer again))
+    (is (= "req-1" (-> first-answer :events first :event/command-id)))
+    (is (= 1 (count (todos storage))))
+    (is (= 1 (count (store/events-after storage 0 100))))
+    (testing "a rejection leaves no trace, so its retry is decided afresh"
+      (is (= {:error "A todo needs a text."}
+             (store/execute! storage todo/domain {:command/id "req-2" :command/type :todo/add :todo/text " "})))
+      (is (= [{:id (:todo/id (first (:events first-answer))) :text "Ship it" :done 0}] (todos storage))))
+    (testing "an id is a string of 1 to 128 characters without control characters"
+      (doseq [id [42 "" (apply str (repeat 129 "a")) "a\nb"]]
+        (is (thrown? js/Error (store/execute! storage todo/domain {:command/id id :command/type :todo/add :todo/text "x"}))))
+      (is (= 1 (count (store/events-after storage 0 100)))))
+    (testing "a command without an id is decided every time"
+      (store/execute! storage todo/domain {:command/type :todo/add :todo/text "Again"})
+      (store/execute! storage todo/domain {:command/type :todo/add :todo/text "Again"})
+      (is (= 3 (count (todos storage)))))))

@@ -21,7 +21,8 @@
                into the read model, `[[sql & params] ...]`, nil for none
    `db` is the Object's SQLite, `ctx.storage.sql`: embedded, mutable,
    synchronous, one per Object. The store adds `:event/number` and
-   `:event/at` to every event; the domain owns the rest, `:event/type`
+   `:event/at` to every event, and `:event/command-id` when the command
+   carried `:command/id`; the domain owns the rest, `:event/type`
    included."
   (:require [clojure.string :as str]
             [cognitect.transit :as transit]))
@@ -99,7 +100,8 @@
    projection takes effect at a stream's first use after the deploy."
   [^js storage domain]
   (let [db (.-sql storage)]
-    (exec db "create table if not exists events (number integer primary key, event text not null)")
+    (exec db "create table if not exists events (number integer primary key, command_id text, event text not null)")
+    (exec db "create index if not exists events_command_id on events (command_id)")
     (exec db "create table if not exists projection (version text not null, tables text not null)")
     (if (= (str (:version domain)) (:version (first (exec db "select version from projection"))))
       (create-tables! db domain)
@@ -111,16 +113,36 @@
   (doseq [statement statements]
     (apply exec db statement)))
 
+(def command-id-limit
+  "How long a command id may be, in characters."
+  128)
+
+(defn- command-id
+  "The `:command/id` of a command, nil when it carries none: a string of
+   1 to 128 characters without control characters, taken as given,
+   because a retry sends the same bytes."
+  [command]
+  (when-some [id (:command/id command)]
+    (when-not (and (string? id)
+                   (<= 1 (count id) command-id-limit)
+                   (not (re-find #"[\u0000-\u001F\u007F]" id)))
+      (throw (ex-info (str "A command id is a string of 1 to " command-id-limit
+                           " characters without control characters, not " (pr-str id))
+                      {:command/id id})))
+    id))
+
 (defn- append!
   "`events` appended after the last one and projected, inside the
-   caller's transaction; the events with their numbers."
-  [db {:keys [project]} events]
+   caller's transaction, recording the command's id; the events with
+   their numbers."
+  [db {:keys [project]} command-id events]
   (let [last (:n (first (exec db "select coalesce(max(number), 0) as n from events")))
         at (.toISOString (js/Date.))]
     (reduce (fn [appended event]
-              (let [event (assoc event :event/number (+ last (count appended) 1) :event/at at)]
-                (exec db "insert into events (number, event) values (?, ?)"
-                      (:event/number event) (encode event))
+              (let [event (cond-> (assoc event :event/number (+ last (count appended) 1) :event/at at)
+                            command-id (assoc :event/command-id command-id))]
+                (exec db "insert into events (number, command_id, event) values (?, ?, ?)"
+                      (:event/number event) command-id (encode event))
                 (run! db (project event))
                 (conj appended event)))
             []
@@ -133,10 +155,13 @@
   (js/Error. "rejected"))
 
 (defn execute!
-  "One command in one transaction: `decide` reads the read model and
-   answers with events or an error; the events are appended and
-   projected; the transaction commits. An error writes nothing, even if
-   `decide` touched a table: the transaction ends in a rollback. A
+  "One command in one transaction. A command whose `:command/id` already
+   produced events is answered with them, as the first time, without
+   deciding: that is what makes a retry safe. Otherwise `decide` reads
+   the read model and answers with events or an error; the events are
+   appended and projected; the transaction commits. An error writes
+   nothing, even if `decide` touched a table: the transaction ends in a
+   rollback, and the retry of a rejected command is decided afresh. A
    projection that throws rolls the events back with it. A decision
    that is not `{:events [...]}` or `{:error ...}` throws."
   [^js storage {:keys [decide] :as domain} command]
@@ -145,15 +170,21 @@
       (.transactionSync storage
         (fn []
           (let [db (.-sql storage)
-                decision (decide db command)]
-            (when-not (and (map? decision)
-                           (not= (contains? decision :events) (contains? decision :error)))
-              (throw (ex-info (str "A decision is {:events [...]} or {:error ...}, not " (pr-str decision))
-                              {:decision decision})))
-            (if (contains? decision :events)
-              {:events (append! db domain (:events decision))}
-              (do (vreset! answer decision)
-                  (throw rejected))))))
+                id (command-id command)
+                done (when id
+                       (mapv #(decode (:event %))
+                             (exec db "select event from events where command_id = ? order by number" id)))]
+            (if (seq done)
+              {:events done}
+              (let [decision (decide db command)]
+                (when-not (and (map? decision)
+                               (not= (contains? decision :events) (contains? decision :error)))
+                  (throw (ex-info (str "A decision is {:events [...]} or {:error ...}, not " (pr-str decision))
+                                  {:decision decision})))
+                (if (contains? decision :events)
+                  {:events (append! db domain id (:events decision))}
+                  (do (vreset! answer decision)
+                      (throw rejected))))))))
       (catch :default e
         (if (identical? e rejected)
           @answer
