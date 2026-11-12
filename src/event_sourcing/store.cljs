@@ -138,6 +138,9 @@
    start. A consumer keeps the last number it saw as its cursor and asks
    again from there."
   [^js storage after limit]
+  (when-not (and (number? after) (js/Number.isFinite after) (not (neg? after)))
+    (throw (ex-info (str "The cursor to read after must be a non-negative number, not " (pr-str after))
+                    {:after after})))
   (mapv #(decode (:event %))
         (exec (.-sql storage)
               "select event from events where number > ? order by number limit ?"

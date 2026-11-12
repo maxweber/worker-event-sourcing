@@ -26,7 +26,9 @@
     (store/encode (store/events-after (.. this -ctx -storage) after store/page)))
   ;; the read model's query `name` (`todo/queries`), transit
   (query [this name]
-    (store/encode ((get (:queries domain) name) (.. this -ctx -storage -sql))))
+    (if-some [query (get (:queries domain) name)]
+      (store/encode (query (.. this -ctx -storage -sql)))
+      (throw (ex-info (str "No such query: " (pr-str name)) {:name name}))))
   ;; the read model derived again from the events
   (rebuild [this]
     (store/rebuild! (.. this -ctx -storage) domain)
