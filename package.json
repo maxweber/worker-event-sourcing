@@ -9,11 +9,16 @@
   "scripts": {
     "build": "vite build --config vite.worker.config.mjs",
     "deploy": "npm run build && wrangler deploy",
-    "test": "cljf build @cljs.edn :test && node target/test/event_sourcing/test_runner.js"
+    "test": "npm run test:store && npm run test:worker",
+    "test:store": "cljf build @cljs.edn :test && node target/test/event_sourcing/test_runner.js",
+    "test:worker": "npm run build && vitest run"
   },
   "devDependencies": {
+    "@cloudflare/vitest-plugin": "^1.8.0",
     "clojurific": "0.12.15",
+    "transit-js": "^0.8.874",
     "vite": "8.3.6",
+    "vitest": "^4.1.12",
     "wrangler": "^4.158.0"
   }
 }

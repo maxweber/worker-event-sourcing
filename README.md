@@ -77,6 +77,7 @@ Mostly written by Claude Code.
 | `src/event_sourcing/todo.cljs` | the example domain: `version`, `tables`, `decide`, `project`, `queries` |
 | `src/event_sourcing/stream.cljs` | the Durable Object: the store behind `execute`, `events`, `query`, `rebuild` |
 | `test/event_sourcing/` | the store exercised on a `node:sqlite` stand-in of the Object's storage |
+| `test/worker/` | the Object on real workerd, through the Cloudflare vitest plugin |
 | `docs/codec-benchmark.md` | transit against EDN, measured |
 | `docs/sql-strings.md` | SQL strings with bindings, not a query DSL: why |
 | `docs/projections-as-data.md` | a projection answers its statements as data: why |
@@ -106,8 +107,10 @@ string, and `rebuild` answers nothing. With the `STREAM` binding of
 
 ```sh
 npm ci
-npm test          # the store under Node, no network
-npm run deploy    # wrangler deploy
+npm test             # the store under Node, then the Object inside workerd; no network
+npm run test:store   # the store alone
+npm run test:worker  # the Object alone
+npm run deploy       # wrangler deploy
 ```
 
 ## License

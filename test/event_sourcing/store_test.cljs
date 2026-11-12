@@ -179,3 +179,39 @@
       (store/execute! storage todo/domain {:command/type :todo/add :todo/text "Again"})
       (store/execute! storage todo/domain {:command/type :todo/add :todo/text "Again"})
       (is (= 3 (count (todos storage)))))))
+
+(deftest a-failed-rebuild-leaves-the-old-read-model-and-version
+  (let [storage (fake/storage)
+        db (.-sql storage)
+        _ (store/schema! storage todo/domain)
+        _ (store/execute! storage todo/domain {:command/type :todo/add :todo/text "Ship it"})
+        broken (-> todo/domain (assoc :version "broken") (assoc :project (fn [_] [["insert into nowhere (x) values (1)"]])))]
+    (is (thrown? js/Error (store/schema! storage broken)))
+    (is (= ["Ship it"] (map :text (todos storage))))
+    (is (= (str todo/version) (:version (first (store/exec db "select version from projection")))))))
+
+(deftest the-store-owns-the-number-and-the-time-of-an-event
+  (let [storage (fake/storage)
+        _ (store/schema! storage todo/domain)
+        sneaky (assoc todo/domain :decide (fn [_ _] {:events [{:event/type :todo/added :todo/id "s" :todo/text "s"
+                                                               :event/number 99 :event/at "yesterday"}]}))
+        {[event] :events} (store/execute! storage sneaky {})]
+    (is (= 1 (:event/number event)))
+    (is (not= "yesterday" (:event/at event)))))
+
+(deftest a-log-of-exactly-two-pages-rebuilds
+  (let [storage (fake/storage)
+        n (* 2 store/page)]
+    (store/schema! storage todo/domain)
+    (dotimes [i n]
+      (store/execute! storage todo/domain {:command/type :todo/add :todo/text (str i)}))
+    (store/rebuild! storage todo/domain)
+    (is (= n (count (todos storage))))))
+
+(deftest an-unreadable-row-fails-construction-and-stays
+  (let [storage (fake/storage)
+        db (.-sql storage)
+        _ (store/schema! storage todo/domain)
+        _ (store/exec db "insert into events (number, event) values (1, 'not transit')")]
+    (is (thrown? js/Error (store/schema! storage (assoc todo/domain :version "next"))))
+    (is (= 1 (count (store/exec db "select number from events"))))))
