@@ -60,11 +60,10 @@ Both codecs round-trip both events exactly.
 
 ## Reproduce
 
-Add transit-cljs to a checkout (it is in `deps.edn` already), put the
-namespace below under `src/event_sourcing/bench.cljs`, build it with the
-Vite config that follows, and run it. A checkout that has built before
-caches its classpath in `.cljf/cpcache`; `npx cljf --force classpath`
-resolves a new dependency.
+In `example/`, put the namespace below under `src/example/bench.cljs`,
+build it with the Vite config that follows, and run it. A checkout that
+has built before caches its classpath in `.cljf/cpcache`; `npx cljf
+--force classpath` resolves a new dependency.
 
 ```sh
 npx vite build --config vite.bench.config.mjs
@@ -76,7 +75,7 @@ node -e "import('./dist/bench/bench.js').then(m => m.run())"
 import cljf from 'clojurific/vite';
 export default {
   plugins: [cljf({ outputDir: 'target/bench', manifest: false,
-                   compilerOptions: { 'js-entries': { bench: { exports: { run: "'event-sourcing.bench/run" } } } } })],
+                   compilerOptions: { 'js-entries': { bench: { exports: { run: "'example.bench/run" } } } } })],
   build: { ssr: true, outDir: 'dist/bench', minify: false,
            rolldownOptions: { input: {}, external: [/^node:/], output: { entryFileNames: '[name].js', codeSplitting: false } } },
   ssr: { target: 'node', noExternal: true },
@@ -84,7 +83,7 @@ export default {
 ```
 
 ```clojure
-(ns event-sourcing.bench
+(ns example.bench
   (:require [cljs.reader :as reader]
             [cognitect.transit :as t]))
 

@@ -1,5 +1,5 @@
-// The Object itself, tested inside workerd: `npm run test:worker` builds
-// the bundle wrangler.jsonc names and runs test/worker/ against it.
+// The Object itself, tested inside workerd: `npm test` builds the bundle
+// wrangler.jsonc names and runs test/worker/ against it.
 import { defineConfig } from 'vitest/config';
 import { cloudflareTest } from '@cloudflare/vitest-plugin';
 

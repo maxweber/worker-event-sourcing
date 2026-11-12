@@ -1,4 +1,4 @@
-(ns event-sourcing.fake
+(ns worker-event-sourcing.fake
   "The Object's storage stood in by node:sqlite: `sql.exec` and
    `transactionSync`, which is all the store uses."
   (:require ["node:sqlite" :as sqlite]))

@@ -1,9 +1,9 @@
-(ns event-sourcing.store-test
+(ns worker-event-sourcing.store-test
   (:require [clojure.string :as str]
             [clojure.test :refer [deftest is testing]]
-            [event-sourcing.fake :as fake]
-            [event-sourcing.store :as store]
-            [event-sourcing.todo :as todo]))
+            [worker-event-sourcing.fake :as fake]
+            [worker-event-sourcing.store :as store]
+            [worker-event-sourcing.todo :as todo]))
 
 (defn todos
   [^js storage]

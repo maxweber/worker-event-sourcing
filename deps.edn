@@ -1,3 +1,4 @@
-{:paths ["src" "test"]
+{:paths ["src"]
  :deps {com.whimsical/clojurific {:mvn/version "0.12.15"}
-        com.cognitect/transit-cljs {:mvn/version "0.8.280"}}}
+        com.cognitect/transit-cljs {:mvn/version "0.8.280"}}
+ :aliases {:test {:extra-paths ["test"]}}}

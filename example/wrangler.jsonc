@@ -1,7 +1,7 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "worker-event-sourcing",
-  "main": "dist/worker/worker-event-sourcing.js",
+  "name": "worker-event-sourcing-example",
+  "main": "dist/worker/example.js",
   "compatibility_date": "2026-10-01",
   "durable_objects": {
     "bindings": [

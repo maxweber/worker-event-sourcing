@@ -1,9 +1,9 @@
-(ns event-sourcing.todo
+(ns worker-event-sourcing.todo
   "The example domain, todos: commands decided against the read model,
    events folded into it. Replace it with yours; the store does not
    know it."
   (:require [clojure.string :as str]
-            [event-sourcing.store :refer [exec]]))
+            [worker-event-sourcing.store :refer [exec]]))
 
 (def version
   "A new UUID, as a string, committed with the change, whenever

@@ -1,4 +1,4 @@
-(ns event-sourcing.store
+(ns worker-event-sourcing.store
   "Event sourcing in the SQLite of a Durable Object. The Object runs one
    request at a time, so it is the single writer of its stream. The
    `events` table is the truth: one event per row as transit JSON,

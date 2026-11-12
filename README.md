@@ -1,9 +1,10 @@
 # worker-event-sourcing
 
-Event sourcing on a Cloudflare Worker, in the SQLite of a Durable Object.
-A minimal example to learn the recipe from. ClojureScript compiled by
-[clojurific](https://github.com/WhimsicalCode/clojurific), bundled by Vite,
-deployed by wrangler.
+Event sourcing on a Cloudflare Worker, in the SQLite of a Durable Object,
+as a ClojureScript library for
+[clojurific](https://github.com/WhimsicalCode/clojurific) projects. One
+Object per stream holds the log and the read model derived from it; a
+domain map says how commands become events and events become rows.
 
 Mostly written by Claude Code.
 
@@ -69,25 +70,41 @@ Mostly written by Claude Code.
    nothing, so its retry is decided afresh, and a flood of rejected
    commands costs CPU, never storage.
 
-## Layout
+## Use it
 
-| file | what |
+In `deps.edn`:
+
+```clojure
+io.github.maxweber/worker-event-sourcing {:git/url "https://github.com/maxweber/worker-event-sourcing.git"
+                                          :git/sha "…"}
+```
+
+A domain is a map; `example/src/example/todo.cljs` is a complete one:
+
+| key | |
 | --- | --- |
-| `src/event_sourcing/store.cljs` | the recipe: the events table, `execute!`, `events-after`, `rebuild!`, the codec |
-| `src/event_sourcing/todo.cljs` | the example domain: `version`, `tables`, `decide`, `project`, `queries` |
-| `src/event_sourcing/stream.cljs` | the Durable Object: the store behind `execute`, `events`, `query`, `rebuild` |
-| `test/event_sourcing/` | the store exercised on a `node:sqlite` stand-in of the Object's storage |
-| `test/worker/` | the Object on real workerd, through the Cloudflare vitest plugin |
-| `docs/codec-benchmark.md` | transit against EDN, measured |
-| `docs/sql-strings.md` | SQL strings with bindings, not a query DSL: why |
-| `docs/projections-as-data.md` | a projection answers its statements as data: why |
+| `:version` | a UUID as a string, a new one whenever `tables` or `project` change |
+| `:tables` | table name to its `create table if not exists` statement |
+| `:decide` | `(fn [db command])` reading the read model, answering `{:events [...]}` or `{:error ...}` |
+| `:project` | `(fn [event])` answering the statements that fold one event in, `[[sql & params] ...]` |
+| `:queries` | query name to `(fn [db])` answering data |
 
-## From a Worker
+The Worker's module defines the Object with it:
 
-Commands, events and query results cross the call as transit JSON text;
-`events` takes the cursor as a number, `query` the query's name as a
-string, and `rebuild` answers nothing. With the `STREAM` binding of
-`wrangler.jsonc`:
+```clojure
+(ns my.worker
+  (:require [my.domain :as domain]
+            [worker-event-sourcing.stream :refer [defstream]]))
+
+(defstream Stream domain/domain)
+```
+
+The Vite plugin exports the class, `js-entries` with `Stream:
+"'my.worker/Stream"`, and `wrangler.jsonc` names it as a SQLite-backed
+class, as `example/` does. Commands, events and query results cross the
+call as transit JSON text; `events` takes the cursor as a number, `query`
+the query's name as a string, and `rebuild` answers nothing. With the
+`STREAM` binding:
 
 ```clojure
 (def writer (transit/writer :json))
@@ -103,14 +120,23 @@ string, and `rebuild` answers nothing. With the `STREAM` binding of
   ;; => the events after number 0, up to 100
 ```
 
+## Layout
+
+| path | what |
+| --- | --- |
+| `src/worker_event_sourcing/store.cljs` | the recipe: the events table, `execute!`, `events-after`, `rebuild!`, the codec |
+| `src/worker_event_sourcing/stream.cljs` | `defstream`, and the Object's methods over the store |
+| `test/worker_event_sourcing/` | the store exercised on a `node:sqlite` stand-in of the Object's storage, with a todo domain as the fixture |
+| `example/` | the library as a Worker: the todo domain, its `Stream`, and tests of the Object inside workerd |
+| `docs/codec-benchmark.md` | transit against EDN, measured |
+| `docs/sql-strings.md` | SQL strings with bindings, not a query DSL: why |
+| `docs/projections-as-data.md` | a projection answers its statements as data: why |
+
 ## Run
 
 ```sh
-npm ci
-npm test             # the store under Node, then the Object inside workerd; no network
-npm run test:store   # the store alone
-npm run test:worker  # the Object alone
-npm run deploy       # wrangler deploy
+npm ci && npm test                  # the library: the store under Node, no network
+cd example && npm ci && npm test    # the example: the Object inside workerd, no network
 ```
 
 ## License
