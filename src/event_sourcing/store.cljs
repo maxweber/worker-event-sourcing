@@ -12,7 +12,9 @@
                under another version is derived again at its first use
      :tables   table name to its `create table if not exists` statement;
                none of them may be the store's own `events` or
-               `projection`
+               `projection`. The store records the names it built under
+               a version and drops those, and no other table, on the
+               next rebuild
      :decide   (fn [db command]) reading the read model and answering
                `{:events [...]}` or `{:error ...}`; it writes nothing
      :project  (fn [event]) answering the statements that fold one event
@@ -84,6 +86,11 @@
 
 (declare rebuild!)
 
+(defn- quoted
+  "A table name as an SQL identifier, whatever it contains."
+  [name]
+  (str "\"" (str/replace name "\"" "\"\"") "\""))
+
 (defn schema!
   "The store's tables where they are missing, and the read model at the
    domain's version: a stream built under another version, or not yet,
@@ -93,7 +100,7 @@
   [^js storage domain]
   (let [db (.-sql storage)]
     (exec db "create table if not exists events (number integer primary key, event text not null)")
-    (exec db "create table if not exists projection (version text not null)")
+    (exec db "create table if not exists projection (version text not null, tables text not null)")
     (if (= (str (:version domain)) (:version (first (exec db "select version from projection"))))
       (create-tables! db domain)
       (rebuild! storage domain))))
@@ -167,15 +174,18 @@
 
 (defn rebuild!
   "The read model dropped and derived again from every event, and the
-   domain's version recorded, in one transaction: after a projection
-   changed, or when in doubt. It reads its own log as any consumer
-   does, a page after a cursor at a time."
+   domain's version recorded with the names of the tables it built, in
+   one transaction: after a projection changed, or when in doubt. It
+   drops the tables the previous version recorded, no other, and reads
+   its own log as any consumer does, a page after a cursor at a time."
   [^js storage {:keys [project version] :as domain}]
   (.transactionSync storage
     (fn []
-      (let [db (.-sql storage)]
-        (doseq [[table _] (read-model-tables domain)]
-          (exec db (str "drop table if exists " table)))
+      (let [db (.-sql storage)
+            tables (read-model-tables domain)
+            previous (some-> (first (exec db "select tables from projection")) :tables decode)]
+        (doseq [table previous]
+          (exec db (str "drop table if exists " (quoted table))))
         (create-tables! db domain)
         (loop [after 0]
           (let [events (events-after storage after page)]
@@ -184,4 +194,4 @@
             (when (= page (count events))
               (recur (:event/number (peek events))))))
         (exec db "delete from projection")
-        (exec db "insert into projection (version) values (?)" (str version))))))
+        (exec db "insert into projection (version, tables) values (?, ?)" (str version) (encode (vec (keys tables))))))))

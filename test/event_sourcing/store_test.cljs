@@ -132,3 +132,27 @@
     (is (thrown? js/Error (store/execute! storage (assoc todo/domain :decide (fn [_ _] [{:event/type :todo/added}])) {})))
     (is (thrown? js/Error (store/execute! storage (assoc todo/domain :decide (fn [_ _] {:events [] :error "both"})) {})))
     (is (= 1 (count (store/events-after storage 0 100))))))
+
+(deftest a-rebuild-drops-the-previous-version-s-tables-and-no-other
+  (let [storage (fake/storage)
+        db (.-sql storage)
+        _ (store/schema! storage todo/domain)
+        _ (store/execute! storage todo/domain {:command/type :todo/add :todo/text "Ship it"})
+        _ (store/exec db "create table notes (note text)")
+        renamed (-> todo/domain
+                    (assoc :version "renamed")
+                    (assoc :tables {"items" "create table if not exists items (id text primary key, text text not null)"})
+                    (assoc :project (fn [event]
+                                      (case (:event/type event)
+                                        :todo/added [["insert into items (id, text) values (?, ?)" (:todo/id event) (:todo/text event)]]
+                                        :todo/completed nil))))
+        tables #(set (map :name (store/exec db "select name from sqlite_master where type = 'table'")))]
+    (testing "the renamed version drops todos, builds items, leaves notes alone"
+      (store/schema! storage renamed)
+      (is (= #{"events" "projection" "items" "notes"} (tables)))
+      (is (= ["Ship it"] (map :text (store/exec db "select text from items")))))
+    (testing "a key is a name and nothing else"
+      (store/schema! storage (-> renamed (assoc :version "tricky") (assoc-in [:tables "x; drop table events"] "create table if not exists x (y)")))
+      (store/schema! storage (assoc renamed :version "after"))
+      (is (= #{"events" "projection" "items" "notes" "x"} (tables)))
+      (is (= 1 (count (store/events-after storage 0 100)))))))

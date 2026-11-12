@@ -43,8 +43,10 @@ Mostly written by Claude Code.
    changed projection means a rebuild, never a migration of the tables
    in place. A changed projection is a new `version` in the domain,
    committed with the change; the Object records the version it was
-   built with, so a stream built under another one derives its read
-   model again at its first use after the deploy, before it answers. A
+   built with and the names of the tables it built, so a stream built
+   under another version derives its read model again at its first use
+   after the deploy, before it answers, dropping those tables and no
+   other. A
    rebuild reads the log a page at a time, as any consumer does, in one
    transaction. A rebuild that fails, a projection that throws or a
    stream past the Object's CPU budget, leaves the log and the old read
