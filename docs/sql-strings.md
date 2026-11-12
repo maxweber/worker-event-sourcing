@@ -32,7 +32,10 @@ declares.
 - **Cost on the Object.** Formatting a map into a string would run for
   every projected event on the single-threaded Object, and add a
   dependency to every Worker's bundle. The string form has neither cost.
-- **Safety is equal.** Parameters go through bindings either way.
+- **Safety is equal.** Parameters go through bindings either way. What
+  can be bound is text, a finite number, nil or bytes; `exec` throws on
+  anything else, because workerd would otherwise store the value's text,
+  `true` as `"true"`, a keyword as `":image"`, and nothing would fail.
 
 ## Opting in
 

@@ -32,7 +32,10 @@ Mostly written by Claude Code.
 4. **The read model is derived.** `project` turns one event into the
    statements that fold it into the tables, SQL text and parameters as
    data, and the store runs them in the command's transaction. It is a
-   function of the event alone, tested without a database. The tables
+   function of the event alone, tested without a database. A statement
+   binds text, finite numbers, nil or bytes; a keyword, a boolean or a
+   date is converted by the projection, in the open, or the statement
+   throws. The tables
    can be dropped and derived again from the events at any time
    (`rebuild`): a changed projection means a rebuild, never a migration
    of the tables in place. `project` sees every event ever written, so
