@@ -35,17 +35,20 @@ Mostly written by Claude Code.
    function of the event alone, tested without a database. A statement
    binds text, finite numbers, nil or bytes; a keyword, a boolean or a
    date is converted by the projection, in the open, or the statement
-   throws. The tables
-   can be dropped and derived again from the events at any time
-   (`rebuild`): a changed projection means a rebuild, never a migration
-   of the tables in place. `project` sees every event ever written, so
-   an old shape is handled there. A changed projection is a new
-   `version` in the domain, committed with the change; the Object
-   records the version it was built with, so a stream built under
-   another one derives its read model again at its first use after the
-   deploy, before it answers. A rebuild reads the log a page at a time,
-   as any consumer does; it is one transaction and the Object has
-   limited CPU per request, so a very long stream rebuilds in slices.
+   throws. `project` sees every event ever written: an old shape is
+   handled there, a retired type keeps a clause answering nil as long
+   as its events exist, and an unknown type throws. The tables can be
+   dropped and derived again from the events at any time (`rebuild`): a
+   changed projection means a rebuild, never a migration of the tables
+   in place. A changed projection is a new `version` in the domain,
+   committed with the change; the Object records the version it was
+   built with, so a stream built under another one derives its read
+   model again at its first use after the deploy, before it answers. A
+   rebuild reads the log a page at a time, as any consumer does, in one
+   transaction. A rebuild that fails, a projection that throws or a
+   stream past the Object's CPU budget, leaves the log and the old read
+   model intact and fails every request of that stream until a
+   corrected projection, or a larger `limits.cpu_ms`, is deployed.
 
 5. **Others read the log.** `events` hands out events in order after a
    number. A consumer keeps the last number it saw as its cursor and asks
