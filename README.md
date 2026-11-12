@@ -83,8 +83,10 @@ Mostly written by Claude Code.
 
 ## From a Worker
 
-The Object's methods take and answer transit JSON text. With the `STREAM`
-binding of `wrangler.jsonc`:
+Commands, events and query results cross the call as transit JSON text;
+`events` takes the cursor as a number, `query` the query's name as a
+string, and `rebuild` answers nothing. With the `STREAM` binding of
+`wrangler.jsonc`:
 
 ```clojure
 (def writer (transit/writer :json))
